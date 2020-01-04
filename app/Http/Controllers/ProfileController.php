@@ -1,0 +1,62 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Intervention\Image\Facades\Image;
+
+class ProfileController extends Controller
+{
+    public function index(User $user){
+        $follows = auth()->user() ? auth()->user()->following->contains($user->id) : false;
+
+        $postsCount = Cache::remember('count.posts.' . $user->id, now()->addSeconds(30), function () use ($user){
+            return $user->posts->count();
+        });
+
+        $followersCount = Cache::remember('count.followers.' . $user->id, now()->addSeconds(30), function () use ($user){
+            return $user->profile->followers->count();
+        });
+
+        $followingCount = Cache::remember('count.following.' . $user->id, now()->addSeconds(30), function () use ($user){
+            return $user->following->count();
+        });
+
+        return view('profiles.index', compact('user', 'follows', 'postsCount', 'followersCount', 'followingCount'));
+    }
+
+    public function edit(User $user){
+        $this->authorize('update', $user->profile);
+
+        return view('profiles.edit', compact('user'));
+
+    }
+
+    public function update(User $user){
+        $username = request()->validate([
+            'username' => 'required'
+        ]);
+
+        $data = request()->validate([
+            'description' => '',
+            'url' => 'url|nullable',
+            'image' => '',
+        ]);
+
+
+        if(request('image')){
+            $image_path = request('image')->store('profile', 'public');
+
+            $image = Image::make(public_path("storage/{$image_path}"))->fit(1000, 1000);
+            $image->save();
+            $data = array_merge($data, ['image' => $image_path]);
+        }
+
+        $user->profile->update($data);
+        $user->update($username);
+
+        return redirect("/profile/{$user->profile->id}");
+    }
+}
